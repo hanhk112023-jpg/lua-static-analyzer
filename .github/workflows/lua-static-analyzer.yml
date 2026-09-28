@@ -1,0 +1,53 @@
+name: Lua Static Analyzer & Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_path:
+        description: 'Đường dẫn đến file .lua trong repo (ví dụ: scripts/input.lua)'
+        required: true
+        default: 'test_sample.lua'
+  push:
+    paths:
+      - '**.lua'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Run Safe Static Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Lua Static Analyzer CLI
+        run: |
+          TARGET_FILE="${{ github.event.inputs.file_path || 'test_sample.lua' }}"
+          if [ ! -f "$TARGET_FILE" ]; then
+            TARGET_FILE=$(find . -name "*.lua" -not -path "*/.*" | head -n 1)
+          fi
+          
+          echo "Analyzing target: $TARGET_FILE"
+          python3 lua_analyzer.py "$TARGET_FILE" -o output/
+
+      - name: Publish Summary to Job Report
+        run: |
+          REPORT_FILE=$(find output/ -name "*_analysis_report.md" | head -n 1)
+          if [ -f "$REPORT_FILE" ]; then
+            cat "$REPORT_FILE" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Cleaned Script & Report Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lua-analysis-results
+          path: output/
+          retention-days: 7
