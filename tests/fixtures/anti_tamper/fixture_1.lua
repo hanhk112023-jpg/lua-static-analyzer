@@ -1,0 +1,1 @@
+if not debug or not debug.getinfo then print("tampered") else print("ok") end

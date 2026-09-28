@@ -1,58 +1,97 @@
-# 🛡️ Lua Static Analyzer & Deobfuscation Toolkit
+# 🛡️ Lua Static Analyzer & Devirtualization Toolkit
 
-Công cụ phân tích tĩnh (Static Analysis) và tái cấu trúc mã nguồn Lua bị làm rối (Obfuscated) chạy trên **CLI** và **GitHub Actions**.
+Công cụ phân tích tĩnh (Static Analysis) và devirtualization mã nguồn Lua/Luau bị làm rối (Obfuscated) chạy trên **CLI** và **GitHub Actions**.
+Tuân thủ nguyên tắc **100% Zero-Execution**: Tuyệt đối không nạp, không chạy untrusted code hoặc payload từ Internet.
 
-## 🌟 Kiến Trúc Pipeline Kỹ Thuật
+---
+
+## 🌟 Kiến Trúc Pipeline Toàn Diện
 
 ```
-Lua input
+Input Lua/Luau
   ↓
-Lexer / Parser (Tokenization & AST Generation)
+Lexer & Parser (AST Construction)
   ↓
-Static Analyzer (Scope & Symbol Tracking)
+Protection & VM Signature Detection (Luraph, IronBrew, MoonSec, PSU, Dispatcher)
   ↓
-VM Detector (Luraph, IronBrew, MoonSec, PSU, Flattened Dispatcher Detection)
+VM Boundary Detection (VMLayout: pc, registers, stack, state variables)
   ↓
-Payload Extractor (HttpGet, Remote URLs, Webhooks, Loadstring, Base64 Blobs - Zero Execution)
+Structure-of-Arrays (SoA) Recovery (Opcode[], OperandA[], OperandB[], OperandC[], Constants[])
   ↓
-Opcode Analyzer (Dispatcher Trees, Handler Mappings, State Transitions)
+Prototype Extraction & Graph (Bootstrap, Anti-Tamper, Decoder, VM Runtime, Payload)
   ↓
-IR Generator (Intermediate Representation: LOADK, CALL, GETTABLE, JMP...)
+Constant Recovery & Symbolic Evaluation (ConstExpr: ADD, SUB, MUL, XOR, ROL, ROR, INDEX, STRING_CHAR)
   ↓
-Control Flow Analysis (CFG Basic Blocks & Dispatcher Flattening Detection)
+Bitvector Symbolic Engine (8/16/32-bit unsigned bitwise emulation)
   ↓
-Deobfuscator (Hex/Decimal Byte Unescaping, String Concat Folding, Table Inlining)
+Decoder Function Analysis (Loop/Table/Bitwise static decoding)
   ↓
-Pseudo-Lua Reconstruction (Clean Code Formatting & Proper Indentation)
+Opcode Recovery & Semantic Inference (LOADK, MOVE, CALL, RETURN, GETTABLE, SETTABLE, JMP, ADD)
   ↓
-Markdown Audit Report (SHA-256, Extracted URLs, Security Flags, Statistics)
+Virtual Register Dataflow & Reaching Definitions
+  ↓
+SSA & Sparse Conditional Constant Propagation (SCCP Branch Pruning)
+  ↓
+Control Flow Graph (CFG) Analysis & Normalization (Irreducible Graph Splitting, Natural Loops)
+  ↓
+Dispatcher Devirtualization (Unrolling State Machines & Binary Decision Trees)
+  ↓
+Semantic Payload Extractor (URLs, Loadstrings, Base64 with Provenance)
+  ↓
+Deobfuscator (Byte Escapes \ddd, \x.., Concat Folding, string.char, table.concat, Table Inlining)
+  ↓
+Pseudo-Lua Reconstruction (Clean Formatting, 4-space Indentation, Idiomatic Syntax)
+  ↓
+Markdown Security Report & Multi-Artifact Export
 ```
 
 ---
 
-## 🔒 Nguyên Tắc An Toàn (Zero-Execution)
-- Tuyệt đối **không gọi `loadstring`** hoặc chạy Lua bytecode.
-- Toàn bộ URL và payload từ bên ngoài được xử lý hoàn toàn dưới dạng dữ liệu tĩnh, **không gửi request mạng**.
-- File đầu vào luôn được bảo vệ nguyên trạng, không ghi đè file gốc.
+## 🚀 Hướng Dẫn Sử Dụng CLI
 
----
-
-## 🚀 Hướng Dẫn Sử Dụng
-
-### 1. Cài đặt & Chạy thủ công trên CLI
 ```bash
 # Cài đặt
 pip install -e .
 
-# Chạy phân tích
+# Phân tích tĩnh cơ bản
 python cli.py samples/sample_loader.lua -o output/
+
+# Chạy phân tích sâu & devirtualization với đầy đủ tùy chọn
+python cli.py samples/sample_loader.lua -o output/ \
+    --deep \
+    --vm-analysis \
+    --dump-prototypes \
+    --dump-constants \
+    --dump-opcodes \
+    --dump-cfg \
+    --dump-ir \
+    --strict-static
 ```
 
-### 2. Chạy tự động qua GitHub Actions
-Quy trình CI (`.github/workflows/ci.yml`) tự động:
-1. Cài đặt dependencies và package.
-2. Chạy toàn bộ Unit Tests & Integration Tests (`python -m unittest discover`).
-3. Chạy pipeline phân tích trên toàn bộ file mẫu trong `samples/`.
-4. Xác minh sự tồn tại và tính hợp lệ của tất cả file output (`_cleaned.lua`, `_analysis_report.md`, `_ir.txt`).
-5. Xuất báo cáo Markdown trực tiếp lên **GitHub Job Summary**.
-6. Lưu trữ toàn bộ kết quả phân tích trong mục **Artifacts** (lưu 7 ngày).
+---
+
+## 📦 Danh Mục Artifact Xuất Ra Mỗi Lần Phân Tích
+Với mỗi file `.lua` đầu vào, công cụ tự động sinh ra 8 file độc lập:
+1. `<name>_cleaned.lua`: Mã nguồn Pseudo-Lua đã khử rối và định dạng sạch.
+2. `<name>_analysis_report.md`: Báo cáo kiểm định Markdown chi tiết (SHA-256, độ bao phủ, URL trích xuất, chữ ký VM).
+3. `<name>_ir.txt`: Mã trung gian độc lập kiến trúc (Intermediate Representation).
+4. `<name>_cfg.json`: Cấu trúc đồ thị luồng điều khiển (CFG Basic Blocks, Edges, Loops, Flattening).
+5. `<name>_prototypes.json`: Cây phân cấp và vai trò Prototype.
+6. `<name>_constants.json`: Thống kê các phép biến đổi hằng số.
+7. `<name>_opcodes.json`: Bảng ánh xạ Opcode và ngữ nghĩa suy diễn.
+8. `<name>_symbolic.json`: Trạng thái lan truyền hằng số biểu tượng (SCCP).
+
+---
+
+## 🧪 Bộ Kiểm Thử (Regression Test Suite)
+Hệ thống tích hợp **100 bài kiểm thử** tự động bao gồm:
+* 11 bài kiểm thử Bitvector (XOR, Rolling XOR, Rotations, Shifts, Byte Swap)
+* 11 bài kiểm thử Constant Decoder & ConstExpr
+* 10 bài kiểm thử String Decoder & Escapes
+* 10 bài kiểm thử Dispatcher Devirtualization
+* 10 bài kiểm thử CFG & Loop Detection
+* 10 bài kiểm thử Opcode Semantic Inference
+* 10 bài kiểm thử Prototype Graph & Classification
+* 10 bài kiểm thử Phủ định (False Positives Prevention)
+* Kiểm thử Sandbox (Monkeypatch chặn socket, urllib, subprocess, os.system)
+* Kiểm thử tính tất định (Determinism Check: cùng input sinh ra bit-exact output)

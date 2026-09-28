@@ -3,6 +3,8 @@ Deobfuscator Module.
 Performs safe static transformations:
 - Unescaping decimal and hexadecimal bytes
 - Folding constant string concatenations
+- Folding string.char(...) calls with constant numbers
+- Folding table.concat(...) calls with constant string arrays
 - Inlining static string array/lookup tables
 - Constant folding for arithmetic expressions
 """
@@ -18,15 +20,20 @@ class LuaDeobfuscator:
             "hex_decoded": 0,
             "concat_folded": 0,
             "tables_inlined": 0,
-            "arithmetic_folded": 0
+            "arithmetic_folded": 0,
+            "string_char_folded": 0,
+            "table_concat_folded": 0
         }
 
     def deobfuscate(self) -> Tuple[str, Dict[str, int]]:
         code = self.code
         code = self.decode_escapes(code)
+        code = self.fold_string_char(code)
+        code = self.fold_table_concat(code)
         code = self.fold_concatenations(code)
         code = self.inline_string_tables(code)
         code = self.fold_simple_arithmetic(code)
+        code = self.fold_string_char(code)
         # Run second pass for concatenated strings from inlined tables
         code = self.fold_concatenations(code)
         return code, self.stats
@@ -61,6 +68,43 @@ class LuaDeobfuscator:
 
         pattern = re.compile(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'')
         return pattern.sub(unescape_match, code)
+
+    def fold_string_char(self, code: str) -> str:
+        """Folds string.char(c1, c2, ...) when all arguments are static numbers."""
+        char_pattern = re.compile(r'string\.char\s*\(\s*([0-9\s,]+)\s*\)')
+        def char_replace(m):
+            raw_nums = m.group(1)
+            nums = [n.strip() for n in raw_nums.split(",") if n.strip()]
+            chars = []
+            for n in nums:
+                try:
+                    val = int(n)
+                    if 0 <= val <= 255:
+                        chars.append(chr(val))
+                    else:
+                        return m.group(0)
+                except ValueError:
+                    return m.group(0)
+            self.stats["string_char_folded"] += 1
+            # Escape internal double quotes if needed
+            escaped_str = "".join(chars).replace('\\', '\\\\').replace('"', '\\"')
+            return f'"{escaped_str}"'
+
+        return char_pattern.sub(char_replace, code)
+
+    def fold_table_concat(self, code: str) -> str:
+        """Folds table.concat({"a", "b", "c"}) -> "abc" """
+        concat_pattern = re.compile(
+            r'table\.concat\s*\(\s*\{\s*([\'"][^\'"\}]+[\'"](?:\s*,\s*[\'"][^\'"\}]+[\'"])*)\s*\}\s*\)'
+        )
+        def concat_replace(m):
+            raw_elements = m.group(1)
+            elements = [e.strip()[1:-1] for e in raw_elements.split(",") if e.strip()]
+            self.stats["table_concat_folded"] += 1
+            folded = "".join(elements).replace('\\', '\\\\').replace('"', '\\"')
+            return f'"{folded}"'
+
+        return concat_pattern.sub(concat_replace, code)
 
     def fold_concatenations(self, code: str) -> str:
         """Folds statically concatenable strings: "foo" .. "bar" -> "foobar" """

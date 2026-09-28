@@ -1,0 +1,1 @@
+if true then print("branch A") else print("branch B") end
