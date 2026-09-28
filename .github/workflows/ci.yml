@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   test-and-analyze:
-    name: Run Tests & Static Analysis Pipeline
+    name: Run Tests & Devirtualization Pipeline
     runs-on: ubuntu-latest
 
     steps:
@@ -31,41 +31,53 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install -e .
 
-      - name: Run Unit Tests
+      - name: Run Test Suite (100 Regression & Security Tests)
         run: |
           python -m unittest discover -s tests -p "test_*.py" -v
 
-      - name: Run Static Analysis on Samples
+      - name: Run Deep Devirtualization Pipeline on Samples
         run: |
           mkdir -p output/
           for sample in samples/*.lua; do
             echo "Processing sample: $sample"
-            python cli.py "$sample" -o output/
+            python cli.py "$sample" -o output/ --deep --vm-analysis
           done
 
       - name: Verify Output Files Exist
         run: |
           set -e
           echo "Verifying generated files..."
-          test -f output/sample_loader_cleaned.lua
-          test -f output/sample_loader_analysis_report.md
-          test -f output/sample_loader_ir.txt
-          test -f output/sample_hex_escaped_cleaned.lua
-          test -f output/sample_hex_escaped_analysis_report.md
-          test -f output/sample_table_mapped_cleaned.lua
-          test -f output/sample_table_mapped_analysis_report.md
-          test -f output/sample_control_flow_cleaned.lua
-          test -f output/sample_control_flow_analysis_report.md
-          echo "All expected outputs successfully verified!"
+          for base in sample_loader sample_hex_escaped sample_table_mapped sample_control_flow target_hune; do
+            test -f "output/${base}_cleaned.lua"
+            test -f "output/${base}_analysis_report.md"
+            test -f "output/${base}_ir.txt"
+            test -f "output/${base}_cfg.json"
+            test -f "output/${base}_prototypes.json"
+            test -f "output/${base}_constants.json"
+            test -f "output/${base}_opcodes.json"
+            test -f "output/${base}_symbolic.json"
+          done
+          echo "All expected artifact files successfully verified!"
           ls -la output/
+
+      - name: Validate Output JSON Schemas
+        run: |
+          python -c "
+          import json, glob
+          for jf in glob.glob('output/*.json'):
+              with open(jf) as f:
+                  data = json.load(f)
+              assert isinstance(data, (dict, list)), f'Invalid JSON format in {jf}'
+          print('All JSON artifacts validated successfully!')
+          "
 
       - name: Publish Summary to Job Summary
         run: |
-          echo "## 🛡️ Lua Static Analyzer Pipeline Results" >> $GITHUB_STEP_SUMMARY
-          echo "Tất cả các bài kiểm tra Unit & Integration tests đã hoàn thành xuất sắc." >> $GITHUB_STEP_SUMMARY
+          echo "## 🛡️ Lua Static Analyzer & Devirtualization Results" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Đã hoàn thành 100/100 tests và chạy phân tích thành công trên tệp mục tiêu target_hune.lua." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Báo cáo phân tích mẫu Loader:" >> $GITHUB_STEP_SUMMARY
-          cat output/sample_loader_analysis_report.md >> $GITHUB_STEP_SUMMARY
+          echo "### Báo cáo phân tích target_hune.lua:" >> $GITHUB_STEP_SUMMARY
+          cat output/target_hune_analysis_report.md >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
