@@ -1,0 +1,2 @@
+# Pure Python Standard Library (No external dependencies required)
+pytest>=7.0.0

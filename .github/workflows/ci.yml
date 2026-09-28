@@ -1,0 +1,75 @@
+name: Lua Static Analyzer CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-analyze:
+    name: Run Tests & Static Analysis Pipeline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install -e .
+
+      - name: Run Unit Tests
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Run Static Analysis on Samples
+        run: |
+          mkdir -p output/
+          for sample in samples/*.lua; do
+            echo "Processing sample: $sample"
+            python cli.py "$sample" -o output/
+          done
+
+      - name: Verify Output Files Exist
+        run: |
+          set -e
+          echo "Verifying generated files..."
+          test -f output/sample_loader_cleaned.lua
+          test -f output/sample_loader_analysis_report.md
+          test -f output/sample_loader_ir.txt
+          test -f output/sample_hex_escaped_cleaned.lua
+          test -f output/sample_hex_escaped_analysis_report.md
+          test -f output/sample_table_mapped_cleaned.lua
+          test -f output/sample_table_mapped_analysis_report.md
+          test -f output/sample_control_flow_cleaned.lua
+          test -f output/sample_control_flow_analysis_report.md
+          echo "All expected outputs successfully verified!"
+          ls -la output/
+
+      - name: Publish Summary to Job Summary
+        run: |
+          echo "## 🛡️ Lua Static Analyzer Pipeline Results" >> $GITHUB_STEP_SUMMARY
+          echo "Tất cả các bài kiểm tra Unit & Integration tests đã hoàn thành xuất sắc." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Báo cáo phân tích mẫu Loader:" >> $GITHUB_STEP_SUMMARY
+          cat output/sample_loader_analysis_report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: analysis-output-artifacts
+          path: output/
+          retention-days: 7
